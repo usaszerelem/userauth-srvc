@@ -2,58 +2,6 @@
  * @swagger
  * components:
  *   schemas:
- *     IUserDtoCreate:
- *       required:
- *         - firstName
- *         - lastName
- *         - email
- *         - password
- *         - audit
- *         - operations
- *       type: object
- *       properties:
- *         firstName:
- *           type: string
- *           description: User's first name
- *           example: John
- *         lastName:
- *           type: string
- *           description: User's last name
- *           example: Smith
- *         email:
- *           type: string
- *           description: User's email address
- *           example: john@email.com
- *         password:
- *           type: string
- *           description: User provided password. Maximum 12 chararacters long.
- *           example: 'Password12!'
- *         audit:
- *           type: boolean
- *           description: Boolean value that specifies whether this user's operations should be audited.
- *           example: true
- *         operations:
- *           type: array
- *           description: List of operations that this user is allowed to perform.
- *           items:
- *             type: string
- *           example: ["UserUpsert", "UserDelete", "UserList", "ProdUpsert", "ProdDelete", "ProdList"]
- */
-
-export default interface IUserDtoCreate {
-    isActive: boolean;
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-    operations: string[];
-    audit: boolean;
-}
-
-/**
- * @swagger
- * components:
- *   schemas:
  *     IUserDtoReturn:
  *       required:
  *         - firstName
@@ -143,12 +91,14 @@ export default interface IUserDtoCreate {
 export default interface IUserDto {
     _id?: string;
     isActive: boolean;
+    audit: boolean;
     firstName: string;
     lastName: string;
     email: string;
     password: string;
-    operations: string[];
-    audit: boolean;
+    roleIds: string[];
+    serviceOperationIds: string[];
+
     createdAt?: string;
     updatedAt?: string;
 }

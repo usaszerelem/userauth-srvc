@@ -1,29 +1,24 @@
 import express, { Request, Response } from 'express';
 import AppLogger from '../startup/utils/Logger';
-import { User, validateUserUpdate, validateUserCreate } from '../models/users';
+import { User, validatePassword, validateUser } from '../models/users';
 import { encryptPassword } from '../startup/utils/hash';
 import _ from 'underscore';
 import { RequestDto } from '../dtos/RequestDto';
-import userAuth from '../middleware/userAuth';
 import IUserDto from '../dtos/IUserDto';
-import userCanUpsert from '../middleware/userCanUpsert';
-import userCanList from '../middleware/userCanList';
 import { HttpMethod, auditAuthUserActivity } from '../startup/utils/audit';
-import { ErrorFormatter } from '../startup/utils/ErrorFormatter';
 import { buildResponse, getFilter, getSortField, selectFields } from './common';
 import { IEntityReturn } from '../dtos/IEntityReturn';
-import userCanDelete from '../middleware/userCanDelete';
 import parseBool from '../startup/utils/parseBool';
-import IUserDtoCreate from '../dtos/IUserDto';
+import userAuth from '../middleware/userAuth';
+import userCanList from '../middleware/userCanList';
+import userCanDelete from '../middleware/userCanDelete';
+import userCanUpsert from '../middleware/userCanUpsert';
+import { RouteErrorFormatter, RouteHandlingError } from '../startup/utils/RouteHandlingError';
 
 const router = express.Router();
 const logger = new AppLogger(module);
 
-/**
- * This array is needed so that we know whether to add the regex ignore case
- * option to our search. Ignore case only works with string field types.
- */
-const stringFieldNames: string[] = ['firstName', 'lastName', 'email'];
+const AuditError = 'Auditing enabled but connection refused.';
 
 /**
  * @swagger
@@ -46,7 +41,7 @@ const stringFieldNames: string[] = ['firstName', 'lastName', 'email'];
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/IUserDtoCreate'
+ *             $ref: '#/components/schemas/IUserDto'
  *     responses:
  *       '201':
  *         description: User successfully created
@@ -66,25 +61,19 @@ router.post('/', [userAuth, userCanUpsert], async (req: Request, res: Response) 
         let userMinData = _.pick(req.body, ['email', 'operations']);
         logger.info(`User Create received:` + JSON.stringify(userMinData));
 
-        const newUser: IUserDtoCreate = { ...req.body, ...{ isActive: true } };
+        const newUser: IUserDto = { ...req.body, ...{ isActive: true } };
 
-        const { error } = validateUserCreate(newUser);
-
-        if (error) {
-            const msg = error.details[0].message;
-            logger.error(msg);
-            return res.status(400).send(msg);
-        }
+        validateUser(newUser);
 
         if ((await User.findOne({ email: newUser.email })) !== null) {
             // Only one user with the same email can exist.
             // Unfortunatelly dynamoose dose note have the
             // 'unique' schema attribute like mongoose so this
             // manual check must be done.
-            const msg = `User already registered: ${newUser.email}`;
-            logger.error(msg);
-            return res.status(400).send(msg);
+            throw new RouteHandlingError(400, `User already registered: ${newUser.email}`);
         }
+
+        validatePassword(newUser.password);
 
         let password = await encryptPassword(newUser.password);
         let user = new User(newUser);
@@ -104,19 +93,19 @@ router.post('/', [userAuth, userCanUpsert], async (req: Request, res: Response) 
         const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Post, dataToSend);
 
         if (success === false) {
-            return res.status(424).send('Audit server not available');
+            throw new RouteHandlingError(424, AuditError);
         }
 
         return res.status(201).json(user);
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in User POST', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error User POST');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 
 /**
- * For this call the
+ *
  */
 //router.post('/resetpassword', [userAuth, userCanUpsert], async (req: Request, res: Response) => {});
 
@@ -161,57 +150,54 @@ router.post('/', [userAuth, userCanUpsert], async (req: Request, res: Response) 
  *       '424':
  *         description: User was updated, but auditing is enabled and the Audit server is not available
  */
-router.put('/', [userAuth, userCanUpsert], async (req: Request, res: Response) => {
+router.put('/:id', [userAuth, userCanUpsert], async (req: Request, res: Response) => {
     try {
-        const entityId: string = req.query.entityId as string;
+        const entityId: string = req.params.id;
         logger.info('Updating user with ID: ' + entityId);
 
         // Ensure product to update exists
 
         if ((await User.findById(entityId)) === null) {
-            const errMsg = `User with id ${entityId} not found`;
-            logger.error(errMsg);
-            return res.status(404).send(errMsg);
+            throw new RouteHandlingError(404, `User with id ${entityId} not found`);
         }
 
         let updatedUser: IUserDto = { ...req.body };
 
         // Prior to saving, validate that the new values conform
         // to our validation rules.
-        const { error } = validateUserUpdate(updatedUser);
-
-        if (error) {
-            logger.error('User information failed validation');
-            return res.status(400).send(error.details[0].message);
-        }
+        validateUser(updatedUser);
 
         /**
          * If a password was provided, encrypt it before the user object
          * is updated in the database
          */
         if (updatedUser.password?.length > 0) {
+            validatePassword(updatedUser.password);
+
             const password = await encryptPassword(updatedUser.password);
             updatedUser.password = password;
         }
 
         // Everything checks out. Save the product and return
         // update product JSON node
-        updatedUser = await User.findByIdAndUpdate(entityId, updatedUser, { new: true });
+        let user = await User.findByIdAndUpdate(entityId, updatedUser, { new: true });
+        user = user.toObject();
+        user = _.omit(user, 'password');
 
         logger.info('User was updated. entityId: ' + entityId);
-        logger.debug(JSON.stringify(updatedUser));
+        logger.debug(JSON.stringify(user));
 
-        const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Put, 'Updated user: ' + JSON.stringify(updatedUser));
+        const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Put, 'Updated user: ' + JSON.stringify(user));
 
         if (success === false) {
-            return res.status(424).send('Audit server not available');
+            throw new RouteHandlingError(424, AuditError);
         }
 
-        return res.status(200).json(updatedUser);
+        return res.status(200).json(user);
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in User PUT', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error User PUT');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 
@@ -249,9 +235,7 @@ router.get('/me', userAuth, async (req: Request, res: Response) => {
         let user = await User.findById(reqDto.Jwt.userId);
 
         if (_.isUndefined(user) === true) {
-            const errMsg = `User with ID ${reqDto.Jwt.userId} was not found`;
-            logger.warn(errMsg);
-            return res.status(400).send(errMsg);
+            throw new RouteHandlingError(400, `User with ID ${reqDto.Jwt.userId} was not found`);
         }
 
         const dataToSend = JSON.stringify(_.omit(user.toObject(), 'password'));
@@ -259,14 +243,14 @@ router.get('/me', userAuth, async (req: Request, res: Response) => {
         const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read user: ' + JSON.stringify(dataToSend));
 
         if (success === false) {
-            return res.status(424).send('Audit server not available');
+            throw new RouteHandlingError(424, AuditError);
         }
 
         return res.status(200).json(_.omit(user.toObject(), 'password'));
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in User GET', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error User GET');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 
@@ -350,72 +334,19 @@ router.get('/me', userAuth, async (req: Request, res: Response) => {
 
 router.get('/', [userAuth, userCanList], async (req: Request, res: Response) => {
     try {
-        if (_.isUndefined(req.query.email) === false) {
-            let user = await User.findOne({
-                email: req.query.email,
-            });
-
-            if (user === null) {
-                const errMsg = `User with email ${req.query.email} was not found`;
-                logger.warn(errMsg);
-                return res.status(400).send(errMsg);
-            } else {
-                user = user.toObject() as IUserDto;
-                user = _.omit(user, 'password');
-
-                logger.info('User found: ' + user!._id);
-                logger.debug(JSON.stringify(user));
-
-                const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read user: ' + user._id);
-
-                if (success === false) {
-                    return res.status(424).send('Audit server not available');
-                }
-
-                return res.status(200).json(user);
-            }
-        } else if (_.isUndefined(req.query.entityId) === false) {
-            let user = await User.findById(req.query.entityId as string);
-
-            if (user === null) {
-                const errMsg = `User with ID ${req.query.entityId} was not found`;
-                logger.warn(errMsg);
-                return res.status(400).send(errMsg);
-            } else {
-                user = user.toObject() as IUserDto;
-                user = _.omit(user, 'password');
-
-                logger.info('User found: ' + user!._id);
-                logger.debug(JSON.stringify(user));
-
-                const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read user: ' + user._id);
-
-                if (success === false) {
-                    return res.status(424).send('Audit server not available');
-                }
-
-                return res.status(200).json(user);
-            }
-        } else {
-            // Information for all users was requested.
-            const result = await getUsersByField(req);
-
-            if (typeof result[1] === 'string') {
-                return res.status(result[0]).send(result[1]);
-            } else {
-                return res.status(result[0]).json(result[1]);
-            }
-        }
+        // Information for all users was requested.
+        const result = await getUsersByField(req);
+        return res.status(200).json(result);
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in User GET', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error User GET');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 
 /**
  * @swagger
- * /api/v1/users/findOne:
+ * /api/v1/users/findBy:
  *   get:
  *     tags:
  *       - Users
@@ -455,17 +386,38 @@ router.get('/', [userAuth, userCanList], async (req: Request, res: Response) => 
  *       '424':
  *         description: User information was retrieved, but auditing is enabled and the Audit server is not available.
  */
-router.get('/findOne', [userAuth, userCanList], async (req: Request, res: Response) => {
+router.get('/findBy', [userAuth, userCanList], async (req: Request, res: Response) => {
     try {
-        if (_.isUndefined(req.query.email) === false) {
+        if (_.isUndefined(req.query.entityId) === false) {
+            const entityId = req.query.entityId;
+            logger.info('Getting user information for user id: ' + entityId);
+
+            let user = await User.findById(entityId);
+
+            if (user === null) {
+                throw new RouteHandlingError(400, `User with ID ${entityId} was not found`);
+            } else {
+                user = user.toObject() as IUserDto;
+                user = _.omit(user, 'password');
+
+                logger.info('User found: ' + user!._id);
+                logger.debug(JSON.stringify(user));
+
+                const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read user: ' + user._id);
+
+                if (success === false) {
+                    throw new RouteHandlingError(424, AuditError);
+                }
+
+                return res.status(200).json(user);
+            }
+        } else if (_.isUndefined(req.query.email) === false) {
             let user = await User.findOne({
                 email: req.query.email,
             });
 
             if (user === null) {
-                const errMsg = `User with email ${req.query.email} was not found`;
-                logger.warn(errMsg);
-                return res.status(400).send(errMsg);
+                throw new RouteHandlingError(400, `User with email ${req.query.email} was not found`);
             } else {
                 user = user.toObject() as IUserDto;
                 user = _.omit(user, 'password');
@@ -476,40 +428,18 @@ router.get('/findOne', [userAuth, userCanList], async (req: Request, res: Respon
                 const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read user: ' + user._id);
 
                 if (success === false) {
-                    return res.status(424).send('Audit server not available');
-                }
-
-                return res.status(200).json(user);
-            }
-        } else if (_.isUndefined(req.query.entityId) === false) {
-            let user = await User.findById(req.query.entityId as string);
-
-            if (user === null) {
-                const errMsg = `User with ID ${req.query.entityId} was not found`;
-                logger.warn(errMsg);
-                return res.status(400).send(errMsg);
-            } else {
-                user = user.toObject() as IUserDto;
-                user = _.omit(user, 'password');
-
-                logger.info('User found: ' + user!._id);
-                logger.debug(JSON.stringify(user));
-
-                const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read user: ' + user._id);
-
-                if (success === false) {
-                    return res.status(424).send('Audit server not available');
+                    throw new RouteHandlingError(424, AuditError);
                 }
 
                 return res.status(200).json(user);
             }
         } else {
-            return res.status(400).send('Bad request.');
+            throw new RouteHandlingError(400, 'Bad request.');
         }
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in User GET', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error User GET');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 
@@ -519,12 +449,17 @@ router.get('/findOne', [userAuth, userCanList], async (req: Request, res: Respon
  * @returns touple with HTTP Status code as key and either an error or product
  * object as value.
  */
-async function getUsersByField(req: Request): Promise<[number, IEntityReturn<IUserDto> | string]> {
+async function getUsersByField(req: Request): Promise<IEntityReturn<IUserDto>> {
     logger.debug('Inside getProductsByField');
+
+    /**
+     * This array is needed so that we know whether to add the regex ignore case
+     * option to our search. Ignore case only works with string field types.
+     */
+    const stringFieldNames: string[] = ['firstName', 'lastName', 'email'];
 
     const pageNumber: number = req.query.pageNumber ? +req.query.pageNumber : 1;
     const pageSize: number = req.query.pageSize ? +req.query.pageSize : 10;
-
     const isString: boolean = stringFieldNames.find((f) => f === req.query.filterByField) ? true : false;
 
     // If the caller requested that all users regardless of whether it is active or deleted should be returned
@@ -560,17 +495,15 @@ async function getUsersByField(req: Request): Promise<[number, IEntityReturn<IUs
     const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Get, 'Read users');
 
     if (success === false) {
-        const msg = 'Audit server not available';
-        logger.error(msg);
-        return [424, msg];
-    } else {
-        const fullUrl: string = req.protocol + '://' + req.get('host') + req.originalUrl;
-        const response = buildResponse<IUserDto>(fullUrl, pageNumber, pageSize, users);
-
-        logger.debug('Returning: ' + JSON.stringify(response));
-        logger.info('Success');
-        return [200, response];
+        throw new RouteHandlingError(424, AuditError);
     }
+
+    const fullUrl: string = req.protocol + '://' + req.get('host') + req.originalUrl;
+    const response = buildResponse<IUserDto>(fullUrl, pageNumber, pageSize, users);
+
+    logger.debug('Returning: ' + JSON.stringify(response));
+    logger.info('Success');
+    return response;
 }
 
 /**
@@ -617,42 +550,42 @@ async function getUsersByField(req: Request): Promise<[number, IEntityReturn<IUs
  *       '424':
  *         description: User was deleted, but auditing is enabled and the Audit server is not available.
  */
-router.delete('/', [userAuth, userCanDelete], async (req: Request, res: Response) => {
+router.delete('/:id', [userAuth, userCanDelete], async (req: Request, res: Response) => {
     try {
+        const entityId = req.params.id;
         logger.debug('User entity type delete requested');
 
         let entity;
 
         if (req.query.hardDelete === 'true') {
-            entity = (await User.findByIdAndDelete(req.query.entityId as string)) as IUserDto;
+            entity = (await User.findByIdAndDelete(entityId as string)) as IUserDto;
         } else {
-            entity = await User.findByIdAndUpdate(req.query.entityId, { isActive: false }, { new: true });
+            entity = await User.findByIdAndUpdate(entityId, { isActive: false }, { new: true });
         }
 
         if (_.isUndefined(entity) === true || entity === null) {
-            logger.error(`Entity to delete was not found: ${req.query.entityId}`);
-            return res.status(404).send('Not found');
+            throw new RouteHandlingError(404, `Entity to delete was not found: ${entityId}`);
         } else {
             let msg: string;
 
             if (req.query.hardDelete === 'true') {
-                msg = `User deleted ${req.query.entityId}`;
+                msg = `User deleted ${entityId}`;
             } else {
-                msg = `User marked as inactive ${req.query.entityId}`;
+                msg = `User marked as inactive ${entityId}`;
             }
 
             const success = await auditAuthUserActivity(req as RequestDto, HttpMethod.Delete, msg);
 
             if (success === false) {
-                return res.status(424).send('Audit server not available');
+                throw new RouteHandlingError(424, AuditError);
             }
 
             return res.status(200).json(entity);
         }
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in User DELETE', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error User DELETE');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 

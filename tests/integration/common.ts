@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { ServerInit } from '../../src/startup/serverInit';
 import { Server } from 'http';
 import express, { Express } from 'express';
-import { User, generateAuthToken } from '../../src/models/users';
+import { User } from '../../src/models/users';
 
 const app: Express = express();
 
@@ -41,7 +41,7 @@ export async function Startup(): Promise<StartupReturn> {
     //console.log('Creating super user');
 
     await superUser.save();
-    retObj.adminAuthToken = generateAuthToken(superUser!);
+    //retObj.adminAuthToken = generateAuthToken(superUser!);
     //console.log('Super user created.');
 
     return retObj;

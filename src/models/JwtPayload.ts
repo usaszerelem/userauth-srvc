@@ -1,14 +1,8 @@
-import { EAllowedOperations } from './EAllowedOperations';
-
 export class JwtPayload {
-    constructor(
-        public readonly userId: string,
-        public readonly operations: string[],
-        public readonly audit: boolean
-    ) {}
+    constructor(public readonly userId: string, public readonly serviceOperationIds: string[], public readonly audit: boolean) {}
 
-    isOperationAllowed(operation: EAllowedOperations): boolean {
-        var res = this.operations.find((element) => element === operation);
+    isOperationAllowed(operationId: string): boolean {
+        var res = this.serviceOperationIds.find((element) => element === operationId);
 
         return res !== undefined ? true : false;
     }

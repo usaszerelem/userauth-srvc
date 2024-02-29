@@ -2,7 +2,7 @@
  * @swagger
  * components:
  *   schemas:
- *     IUserDtoCreate:
+ *     IOtpDto:
  *       required:
  *         - userId
  *         - url

@@ -16,12 +16,12 @@
  *           type: string
  *           example: 64adc0fe7a9c9d385950dfe2
  *           description: Unique user identifier
- *         operations:
+ *         serviceOperationIds:
  *           type: array
- *           description: List of operations that this user is allowed to perform.
+ *           description: List of service operations that this user is allowed to perform.
  *           items:
  *             type: string
- *             example: ["UserUpsert", "UserDelete", "UserList", "ProdUpsert", "ProdDelete", "ProdList"]
+ *             example: ["65b8179a3dc27454e0bc8978", "65b8179a3dc27454e0bc8979"]
  *         audit:
  *           type: boolean
  *           description: Boolean value that specifies whether this user's operations should be audited.
@@ -38,7 +38,7 @@
 
 export default interface JwtPayloadDto {
     userId: string;
-    operations: string[];
+    serviceOperationIds: string[];
     audit: boolean;
     iat: number;
     exp: number;

@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
 import AppLogger from '../startup/utils/Logger';
-import { ErrorFormatter } from '../startup/utils/ErrorFormatter';
 import { Otp } from '../models/otp';
 import { AppEnv, Env } from '../startup/utils/AppEnv';
 import moment from 'moment';
@@ -10,6 +9,7 @@ import Email from '../startup/utils/Email';
 import { PasswordValidator, ValidationType } from '../startup/utils/PassValidator';
 import IOtpDto from '../dtos/IOtp';
 import { encryptPassword } from '../startup/utils/hash';
+import { RouteErrorFormatter, RouteHandlingError } from '../startup/utils/RouteHandlingError';
 
 const router = express.Router();
 const logger = new AppLogger(module);
@@ -60,9 +60,7 @@ router.post('/passwordresetrequest', async (req: Request, res: Response) => {
         let resetUrl: string = req.body.resetUrl as string;
 
         if (userEmail === undefined || resetUrl === undefined) {
-            const msg = `Password reset. Invalid parameters`;
-            logger.error(msg);
-            return res.status(400).send(msg);
+            throw new RouteHandlingError(400, `Password reset. Invalid parameters`);
         }
 
         // --------------------------------------------------
@@ -71,9 +69,7 @@ router.post('/passwordresetrequest', async (req: Request, res: Response) => {
         let user = await User.findOne({ email: userEmail });
 
         if (user === null) {
-            const msg = `Password reset. User not found: ${userEmail}`;
-            logger.error(msg);
-            return res.status(400).send(msg);
+            throw new RouteHandlingError(400, `Password reset. User not found: ${userEmail}`);
         }
 
         // --------------------------------------------------
@@ -125,9 +121,9 @@ router.post('/passwordresetrequest', async (req: Request, res: Response) => {
             await Otp.deleteOne({ _id: otpDocId });
         }
 
-        const msg = ErrorFormatter('Fatal error user password reset request', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Error user password reset request');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 
@@ -188,9 +184,7 @@ router.post('/passwordreset/', async (req: Request, res: Response) => {
         const otpEntityId = new ObjectId(req.body.otpEntityId);
 
         if (newPassword === undefined || otpEntityId === undefined) {
-            const msg = `Password reset. Invalid parameters`;
-            logger.error(msg);
-            return res.status(400).send(msg);
+            throw new RouteHandlingError(400, `Password reset. Invalid parameters`);
         }
 
         logger.info(`Reset password URL requested for "${req.body.otpEntityId}"`);
@@ -198,7 +192,7 @@ router.post('/passwordreset/', async (req: Request, res: Response) => {
         let otp: IOtpDto = await Otp.findById(otpEntityId);
 
         if (otp === null) {
-            return res.status(404).send('One time password token was already used.');
+            throw new RouteHandlingError(404, `One time password token was already used.`);
         }
 
         logger.debug(JSON.stringify(otp, null, 2));
@@ -213,8 +207,7 @@ router.post('/passwordreset/', async (req: Request, res: Response) => {
         if (minutesPassed > minutesExpired) {
             minutesExpired -= minutesPassed;
             const msg = 'Password request for user ' + otp.userId + ' expired ' + Math.abs(minutesExpired) + ' minutes ago';
-            logger.error(msg);
-            return res.status(400).send(msg);
+            throw new RouteHandlingError(400, msg);
         }
 
         // ------------------------------------------------
@@ -230,8 +223,7 @@ router.post('/passwordreset/', async (req: Request, res: Response) => {
                 errMsg = errMsg + retStatus[i].toString();
             }
 
-            logger.error(errMsg);
-            return res.status(400).send(errMsg);
+            throw new RouteHandlingError(400, errMsg);
         }
 
         const password = await encryptPassword(newPassword);
@@ -250,9 +242,9 @@ router.post('/passwordreset/', async (req: Request, res: Response) => {
 
         return res.status(200).send('Password was updated.');
     } catch (ex) {
-        const msg = ErrorFormatter('Fatal error in password reset', ex, __filename);
-        logger.error(msg);
-        return res.status(500).send(msg);
+        const error = RouteErrorFormatter(ex, __filename, 'Fatal error in password reset');
+        logger.error(error.message);
+        return res.status(error.httpStatus).send(error.message);
     }
 });
 

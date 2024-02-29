@@ -45,21 +45,14 @@ export interface IAuthUser {
  *           type: string
  *           description: User's last name
  *           example: Smith
- *         operations:
- *           type: array
- *           description: List of operations that this user is allowed to perform.
- *           items:
- *             type: string
- *           example: ["UserUpsert", "UserDelete", "UserList", "ProdUpsert", "ProdDelete", "ProdList"]
  *         authToken:
  *           type: string
- *           description: Encoded JWT
+ *           description: Encoded JWT. List of service operations that this user is allowed to perform are encoded.
  *           example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NGJmNWJhM2QwYzhkOTNhZDNlYTQ3YTQiLC"
  */
 
 export interface IAuthUserResponse {
     firstName: string;
     lastName: string;
-    operations: string[];
     authToken: string;
 }

@@ -4,7 +4,6 @@ import AppLogger from '../startup/utils/Logger';
 import { JwtPayload } from '../models/JwtPayload';
 import JwtPayloadDto from '../dtos/JwtPayloadDto';
 import { AppEnv, Env } from '../startup/utils/AppEnv';
-import { ErrorFormatter } from '../startup/utils/ErrorFormatter';
 
 const logger = new AppLogger(module);
 
@@ -33,12 +32,18 @@ export default function userAuth(req: Request, res: Response, next: NextFunction
             logger.debug(`userAuth token TTL: ${expiration} seconds`);
 
             let request = req as RequestDto;
-            request.Jwt = new JwtPayload(decoded.userId, decoded.operations, decoded.audit);
+            request.Jwt = new JwtPayload(decoded.userId, decoded.serviceOperationIds, decoded.audit);
             next();
-        } catch (ex) {
+        } catch (ex: any | Error) {
+            let msg = 'Invalid token.';
+
+            if (ex.name === 'TokenExpiredError') {
+                msg = 'Authentication token expired';
+            }
+
             logger.debug(`Token: ${token}`);
-            logger.error(ErrorFormatter('Fatal error', ex, __filename));
-            res.status(400).send('Invalid token.');
+            logger.error(msg);
+            res.status(400).send(msg);
         }
     }
 }

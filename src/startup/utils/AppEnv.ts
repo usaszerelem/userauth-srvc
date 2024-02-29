@@ -1,3 +1,7 @@
+import path from 'path';
+
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
+
 export enum Env {
     SERVICE_NAME = 'SERVICE_NAME',
     USE_HTTPS = 'USE_HTTPS',
@@ -5,6 +9,8 @@ export enum Env {
     AUDIT_ENABLED = 'AUDIT_ENABLED',
     AUDIT_URL = 'AUDIT_URL',
     AUDIT_API_KEY = 'AUDIT_API_KEY',
+    RBAC_ROLES_URL = 'RBAC_ROLES_URL',
+    RBAC_API_KEY = 'RBAC_API_KEY',
     JWT_PRIVATE_KEY = 'JWT_PRIVATE_KEY',
     JWT_EXPIRATION = 'JWT_EXPIRATION',
     MONGODB_URL = 'MONGODB_URL',
@@ -15,6 +21,9 @@ export enum Env {
     SERVICE_EMAIL_ADDRESS = 'SERVICE_EMAIL_ADDRESS',
     SERVICE_EMAIL_PASSWORD = 'SERVICE_EMAIL_PASSWORD',
     OTP_EXPIRATION_MINUTES = 'OTP_EXPIRATION_MINUTES',
+    SRVCID_USER_UPSERT = 'SRVCID_USER_UPSERT',
+    SRVCID_USER_LIST = 'SRVCID_USER_LIST',
+    SRVCID_USER_DELETE = 'SRVCID_USER_DELETE',
 }
 
 export class AppEnv {
@@ -29,6 +38,8 @@ export class AppEnv {
         this.GetEnvVar(process.env.AUDIT_ENABLED, Env.AUDIT_ENABLED);
         this.GetEnvVar(process.env.AUDIT_URL, Env.AUDIT_URL);
         this.GetEnvVar(process.env.AUDIT_API_KEY, Env.AUDIT_API_KEY);
+        this.GetEnvVar(process.env.RBAC_API_KEY, Env.RBAC_API_KEY);
+        this.GetEnvVar(process.env.RBAC_ROLES_URL, Env.RBAC_ROLES_URL);
         this.GetEnvVar(process.env.JWT_PRIVATE_KEY, Env.JWT_PRIVATE_KEY);
         this.GetEnvVar(process.env.JWT_EXPIRATION, Env.JWT_EXPIRATION);
         this.GetEnvVar(process.env.MONGODB_URL, Env.MONGODB_URL);
@@ -39,6 +50,9 @@ export class AppEnv {
         this.GetEnvVar(process.env.SERVICE_EMAIL_ADDRESS, Env.SERVICE_EMAIL_ADDRESS);
         this.GetEnvVar(process.env.SERVICE_EMAIL_PASSWORD, Env.SERVICE_EMAIL_PASSWORD);
         this.GetEnvVar(process.env.OTP_EXPIRATION_MINUTES, Env.OTP_EXPIRATION_MINUTES);
+        this.GetEnvVar(process.env.SRVCID_USER_UPSERT, Env.SRVCID_USER_UPSERT);
+        this.GetEnvVar(process.env.SRVCID_USER_LIST, Env.SRVCID_USER_LIST);
+        this.GetEnvVar(process.env.SRVCID_USER_DELETE, Env.SRVCID_USER_DELETE);
 
         if (this.missingEnvVars.length > 0) {
             const msg = '*** ERROR: Missing environment variables: ' + this.missingEnvVars.flat();

@@ -2,9 +2,10 @@ const mongoose = require('mongoose');
 const Joi = require('joi-oid');
 import jwt from 'jsonwebtoken';
 import IUserDto from '../dtos/IUserDto';
-import { EAllowedOperations } from './EAllowedOperations';
 import { AppEnv, Env } from '../startup/utils/AppEnv';
 import AppLogger from '../startup/utils/Logger';
+import isUndefOrEmpty from '../startup/utils/isUndefOrEmpty';
+import { RouteHandlingError } from '../startup/utils/RouteHandlingError';
 
 const logger = new AppLogger(module);
 
@@ -28,7 +29,6 @@ export namespace Limits {
 // lastName - User's last name
 // email - Used as unique field for authentication
 // password - Used with email for authentication
-// operations - Allowed operations for this user. See utils/constants.js
 // audit - whether activities performed by this user are audited
 
 const userSchema = new mongoose.Schema(
@@ -53,7 +53,11 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
-        operations: {
+        roleIds: {
+            type: Array,
+            schema: [{ type: String }],
+        },
+        serviceOperationIds: {
             type: Array,
             schema: [{ type: String }],
         },
@@ -72,8 +76,16 @@ export const User = mongoose.model('users', userSchema);
 // in the JWT. Based on this simple role based authorization can be made.
 // ---------------------------------------------------------------------------
 
-export function generateAuthToken(user: IUserDto): string {
-    const payload = { userId: user._id, operations: user.operations, audit: user.audit };
+export function generateAuthToken(user: IUserDto, serviceOperationIds: string[]): string {
+    let allServiceOps: string[];
+
+    if (user.serviceOperationIds.length > 0) {
+        allServiceOps = user.serviceOperationIds.concat(serviceOperationIds);
+    } else {
+        allServiceOps = serviceOperationIds;
+    }
+
+    const payload = { userId: user._id, serviceOperationIds: allServiceOps, audit: user.audit };
 
     logger.debug(`JwtExpiration: ` + AppEnv.Get(Env.JWT_EXPIRATION));
 
@@ -88,50 +100,45 @@ export function generateAuthToken(user: IUserDto): string {
 // Validation of the user object.
 // ---------------------------------------------------------------------------
 
-export function validateUserCreate(user: typeof User) {
+export function validateUser(user: typeof User): void {
     const schema = Joi.object({
         firstName: Joi.string().min(Limits.FNAME_MIN_LENGTH).max(Limits.FNAME_MAX_LENGTH).required(),
         lastName: Joi.string().min(Limits.LNAME_MIN_LENGTH).max(Limits.LNAME_MAX_LENGTH).required(),
         email: Joi.string().min(Limits.EMAIL_MIN_LENGTH).max(Limits.EMAIL_MAX_LENGTH).required().email(),
-        password: Joi.string().min(Limits.PASSWORD_MIN_LENGTH).max(Limits.PASSWORD_MAX_LENGTH).required(),
         audit: Joi.boolean().required(),
-        operations: Joi.array().items(
-            Joi.string()
-                .valid(
-                    EAllowedOperations.ProdDelete,
-                    EAllowedOperations.ProdList,
-                    EAllowedOperations.ProdUpsert,
-                    EAllowedOperations.UserDelete,
-                    EAllowedOperations.UserList,
-                    EAllowedOperations.UserUpsert
-                )
-                .required()
-        ),
+        roleIds: Joi.array().min(0).items(Joi.string().min(0)),
+        serviceOperationIds: Joi.array().min(0).items(Joi.string().min(0)),
     }).options({ allowUnknown: true });
 
-    return schema.validate(user);
+    const { error } = schema.validate(user);
+
+    if (error !== undefined && error.details[0].message.length > 0) {
+        return error.details[0].message.length;
+    } else {
+        for (let i = 0; i < user.roleIds.length; i++) {
+            if (user.roleIds[i].length === 0) {
+                throw new RouteHandlingError(400, 'Invalid role identifiers found');
+            }
+        }
+
+        for (let i = 0; i < user.serviceOperationIds.length; i++) {
+            if (user.serviceOperationIds[i].length === 0) {
+                throw new RouteHandlingError(400, 'Invalid service operation identifiers found');
+            }
+        }
+    }
 }
 
-export function validateUserUpdate(user: typeof User) {
-    const schema = Joi.object({
-        _id: Joi.objectId().required(),
-        isActive: Joi.boolean(),
-        firstName: Joi.string().min(Limits.FNAME_MIN_LENGTH).max(Limits.FNAME_MAX_LENGTH).required(),
-        lastName: Joi.string().min(Limits.LNAME_MIN_LENGTH).max(Limits.LNAME_MAX_LENGTH).required(),
-        email: Joi.string().min(Limits.EMAIL_MIN_LENGTH).max(Limits.EMAIL_MAX_LENGTH).required().email(),
-        password: Joi.string().min(Limits.PASSWORD_MIN_LENGTH).max(Limits.PASSWORD_MAX_LENGTH),
-        audit: Joi.boolean().required(),
-        operations: Joi.array().items(
-            Joi.string().valid(
-                EAllowedOperations.ProdDelete,
-                EAllowedOperations.ProdList,
-                EAllowedOperations.ProdUpsert,
-                EAllowedOperations.UserDelete,
-                EAllowedOperations.UserList,
-                EAllowedOperations.UserUpsert
-            )
-        ),
-    }).options({ allowUnknown: true });
+/**
+ * Validates that the password is compliant with the password complexity policy.
+ * At this initial version only length is checked for.
+ * @param password that should be validated
+ * @returns Boolean true if password is valid
+ */
+export function validatePassword(password: string): void {
+    let isValidPassword: boolean = !isUndefOrEmpty(password);
 
-    return schema.validate(user);
+    if (isValidPassword === true && (password.length < Limits.PASSWORD_MIN_LENGTH || password.length > Limits.PASSWORD_MAX_LENGTH)) {
+        throw new RouteHandlingError(400, 'Invalid password');
+    }
 }

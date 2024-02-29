@@ -1,10 +1,6 @@
-import {
-    RequestDto,
-    Request,
-    Response,
-    NextFunction,
-} from '../dtos/RequestDto';
-import { EAllowedOperations } from '../models/EAllowedOperations';
+import { RequestDto, Request, Response, NextFunction } from '../dtos/RequestDto';
+import { AppEnv, Env } from '../startup/utils/AppEnv';
+
 import canPerform from './canPerform';
 
 // ---------------------------------------------------------------------------
@@ -12,16 +8,6 @@ import canPerform from './canPerform';
 // product upsert operation permission
 // ---------------------------------------------------------------------------
 
-export default function userCanList(
-    req: Request,
-    res: Response,
-    next: NextFunction
-): void {
-    canPerform(
-        req as RequestDto,
-        res,
-        next,
-        EAllowedOperations.UserList,
-        'Forbidden listing users'
-    );
+export default function userCanList(req: Request, res: Response, next: NextFunction): void {
+    canPerform(req as RequestDto, res, next, AppEnv.Get(Env.SRVCID_USER_LIST), 'Forbidden upserting users');
 }

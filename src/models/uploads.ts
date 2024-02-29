@@ -1,3 +1,5 @@
+import { RouteHandlingError } from '../startup/utils/RouteHandlingError';
+
 const mongoose = require('mongoose');
 const Joi = require('joi-oid');
 
@@ -62,7 +64,7 @@ export const Upload = mongoose.model('uploads', uploadSchema);
 // Validation of the upload object.
 // ---------------------------------------------------------------------------
 
-export function validateUpload(upload: typeof Upload) {
+export function validateUpload(upload: typeof Upload): void {
     const schema = Joi.object({
         _id: Joi.objectId(),
         originalFileName: Joi.string().min(ORIGFILE_MIN_LENGTH).max(ORIGFILE_MAX_LENGTH).required(),
@@ -78,5 +80,9 @@ export function validateUpload(upload: typeof Upload) {
         errorCode: Joi.string(),
     }).options({ allowUnknown: false });
 
-    return schema.validate(upload);
+    const { error } = schema.validate(upload);
+
+    if (error) {
+        throw new RouteHandlingError(400, error.details[0].message);
+    }
 }

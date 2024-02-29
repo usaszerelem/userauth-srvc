@@ -1,14 +1,13 @@
 import { RequestDto, Response, NextFunction } from '../dtos/RequestDto';
-import { EAllowedOperations } from '../models/EAllowedOperations';
 import AppLogger from '../startup/utils/Logger';
 
 const logger = new AppLogger(module);
 
-export default function canPerform(req: RequestDto, res: Response, next: NextFunction, op: EAllowedOperations, msg: string): void {
+export default function canPerform(req: RequestDto, res: Response, next: NextFunction, serviceOpId: string, msg: string): void {
     try {
         const reqDto = req as RequestDto;
 
-        if (reqDto.Jwt.isOperationAllowed(op) === false) {
+        if (reqDto.Jwt.isOperationAllowed(serviceOpId) === false) {
             logger.error(msg);
             res.status(403).send(msg);
         } else {

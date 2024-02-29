@@ -14,7 +14,8 @@ async function DbSuccessCallback(db: mongoose.Connection): Promise<void> {
         lastName: 'User',
         email: 'super.user@gmail.com',
         password: '$2b$10$7/HXCoDwlsl6aC3n7R0ez.RLLRSc19YVKyNcxilnmGOPhxyVRZrtC',
-        operations: ['UserUpsert', 'UserDelete', 'UserList', 'ProdUpsert', 'ProdDelete', 'ProdList'],
+        roleIds: [''],
+        serviceOperationIds: [''],
         audit: true,
     };
 

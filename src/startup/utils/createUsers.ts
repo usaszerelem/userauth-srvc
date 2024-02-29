@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import path from 'path';
-import { User, validateUserCreate } from '../../models/users';
+import { User, validateUser } from '../../models/users';
 import IUserDto from '../../dtos/IUserDto';
 import AppLogger from './Logger';
-import { ErrorFormatter } from './ErrorFormatter';
+import { RouteErrorFormatter } from './RouteHandlingError';
 
 const logger = new AppLogger(module);
 
@@ -23,17 +23,12 @@ export async function createUsers(): Promise<void> {
                     users[idx].password = 'invalidpsw';
                     users[idx].isActive = true;
 
-                    const { error } = validateUserCreate(users[idx]);
+                    validateUser(users[idx]);
 
-                    if (error) {
-                        logger.error(error.message);
-                        logger.error(JSON.stringify(users[idx], null, 2));
-                    } else {
-                        users[idx].password = password;
-                        let user = new User(users[idx]);
-                        user = await user.save();
-                        logger.info(`Saved: "${users[idx].email}"`);
-                    }
+                    users[idx].password = password;
+                    let user = new User(users[idx]);
+                    user = await user.save();
+                    logger.info(`Saved: "${users[idx].email}"`);
                 } else {
                     logger.info(`"${users[idx].email}" exists.`);
                 }
@@ -41,8 +36,9 @@ export async function createUsers(): Promise<void> {
 
             resolve();
         } catch (ex) {
-            const msg = ErrorFormatter('createUsers() Error', ex, __filename);
-            logger.error(msg);
+            const error = RouteErrorFormatter(ex, __filename, 'createUsers() Error');
+            logger.error(error.message);
+
             reject();
         }
     });
