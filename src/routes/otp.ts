@@ -7,7 +7,7 @@ import { ObjectId } from 'mongodb';
 import { User } from '../models/users';
 import Email from '../startup/utils/Email';
 import { PasswordValidator, ValidationType } from '../startup/utils/PassValidator';
-import IOtpDto from '../dtos/IOtp';
+import { IOtpDto, IPasswordResetRequestDto } from '../dtos/IOtp';
 import { encryptPassword } from '../startup/utils/hash';
 import { RouteErrorFormatter, RouteHandlingError } from '../startup/utils/RouteHandlingError';
 
@@ -56,20 +56,19 @@ router.post('/passwordresetrequest', async (req: Request, res: Response) => {
     let otpDocId: string | undefined = undefined;
 
     try {
-        const userEmail: string = req.body.email as string;
-        let resetUrl: string = req.body.resetUrl as string;
+        const resetReq: IPasswordResetRequestDto = { ...req.body };
 
-        if (userEmail === undefined || resetUrl === undefined) {
+        if (resetReq.email === undefined || resetReq.resetUrl === undefined) {
             throw new RouteHandlingError(400, `Password reset. Invalid parameters`);
         }
 
         // --------------------------------------------------
         // First check is user with specified entity exists
 
-        let user = await User.findOne({ email: userEmail });
+        let user = await User.findOne({ email: resetReq.email });
 
         if (user === null) {
-            throw new RouteHandlingError(400, `Password reset. User not found: ${userEmail}`);
+            throw new RouteHandlingError(400, `Password reset. User not found: ${resetReq.email}`);
         }
 
         // --------------------------------------------------
@@ -103,14 +102,14 @@ router.post('/passwordresetrequest', async (req: Request, res: Response) => {
         // base redirect to a password reset page or inform
         // the user that the token expired.
 
-        if (resetUrl.lastIndexOf('?') === -1) {
-            resetUrl = resetUrl + `?id=${otp._id}`;
+        if (resetReq.resetUrl.lastIndexOf('?') === -1) {
+            resetReq.resetUrl = resetReq.resetUrl + `?id=${otp._id}`;
         } else {
-            resetUrl = resetUrl + `&id=${otp._id}`;
+            resetReq.resetUrl = resetReq.resetUrl + `&id=${otp._id}`;
         }
 
         const email = new Email();
-        await email.sendOtp(user.email, resetUrl);
+        await email.sendOtp(user.email, resetReq.resetUrl);
 
         return res.status(201).send('Success');
     } catch (ex) {
@@ -230,10 +229,9 @@ router.post('/passwordreset/', async (req: Request, res: Response) => {
         const user = await User.findByIdAndUpdate(otp.userId, { password: password }, { new: true });
 
         if (user === undefined) {
-            throw Error('Unable to update password for user');
+            throw new RouteHandlingError(400, 'Unable to update password for user');
         }
 
-        // TODO: VALIDATE
         logger.info('User was updated. userId: ' + otp.userId);
         logger.debug(JSON.stringify(user, null, 2));
 

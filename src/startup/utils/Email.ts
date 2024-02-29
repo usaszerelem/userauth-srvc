@@ -11,8 +11,8 @@ export default class Email {
     constructor() {
         // https://medium.com/@josewebdev/gmail-email-service-setup-for-code-based-email-sending-8b77d7c0a3c0
 
-        const fromEmailAddress = 'm02688368@gmail.com'; //AppEnv.Get(Env.SERVICE_EMAIL_ADDRESS);
-        const fromEmailPassword = 'yrrt pflg uvnj tcqw'; // 'ChangePassword1!'; // AppEnv.Get(Env.SERVICE_EMAIL_PASSWORD);
+        const fromEmailAddress = AppEnv.Get(Env.SERVICE_EMAIL_ADDRESS);
+        const fromEmailPassword = AppEnv.Get(Env.SERVICE_EMAIL_PASSWORD);
 
         assert(fromEmailAddress.length > 0, 'Internal Error: SERVICE_EMAIL_ADDRESS not initialized');
         assert(fromEmailPassword.length > 0, 'Internal Error: SERVICE_EMAIL_PASSWORD not initialized');

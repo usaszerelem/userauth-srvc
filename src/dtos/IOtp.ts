@@ -29,10 +29,15 @@
  *           example: 2023-11-08T17:07:46.871+00:00
  */
 
-export default interface IOtpDto {
+export interface IOtpDto {
     _id?: string;
     userId: string;
     url: string;
     createdAt?: string;
     updatedAt?: string;
+}
+
+export interface IPasswordResetRequestDto {
+    email: string;
+    resetUrl: string;
 }
